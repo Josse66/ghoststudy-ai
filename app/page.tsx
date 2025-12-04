@@ -38,7 +38,7 @@ export default function Home() {
         <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 mt-20">
           <Card className="p-6 bg-gray-800 border-gray-700">
             <Brain className="w-12 h-12 text-purple-400 mb-4" />
-            <h3 className="text-xl font-bold mb-2">IA Inteligente</h3>
+            <h3 className="text-xl font-bold mb-2 text-pink-300">IA Inteligente</h3>
             <p className="text-gray-400">
               Chatea con tus documentos y genera flashcards automáticamente
             </p>
@@ -46,7 +46,7 @@ export default function Home() {
 
           <Card className="p-6 bg-gray-800 border-gray-700">
             <Zap className="w-12 h-12 text-pink-400 mb-4" />
-            <h3 className="text-xl font-bold mb-2">Súper Rápido</h3>
+            <h3 className="text-xl font-bold mb-2 text-pink-300">Súper Rápido</h3>
             <p className="text-gray-400">
               Escanea apuntes con tu cámara y estudia desde el móvil
             </p>
@@ -54,7 +54,7 @@ export default function Home() {
 
           <Card className="p-6 bg-gray-800 border-gray-700">
             <Target className="w-12 h-12 text-blue-400 mb-4" />
-            <h3 className="text-xl font-bold mb-2">Modo Examen</h3>
+            <h3 className="text-xl font-bold mb-2 text-pink-300">Modo Examen</h3>
             <p className="text-gray-400">
               Simula exámenes reales con timer y análisis de errores
             </p>
@@ -62,7 +62,7 @@ export default function Home() {
 
           <Card className="p-6 bg-gray-800 border-gray-700">
             <Users className="w-12 h-12 text-green-400 mb-4" />
-            <h3 className="text-xl font-bold mb-2">Gamificación</h3>
+            <h3 className="text-xl font-bold mb-2 text-pink-300">Gamificación</h3>
             <p className="text-gray-400">
               Gana XP, sube niveles y compite con tus amigos
             </p>
