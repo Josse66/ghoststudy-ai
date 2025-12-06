@@ -1,7 +1,9 @@
 import { createClient } from '@/lib/supabase-server';
 import { redirect } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Brain, FileText, CreditCard, Zap } from 'lucide-react';
+import { Brain, FileText, CreditCard, Zap, BookOpen } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import Link from 'next/link';
 import LogoutButton from '@/components/ui/LogoutButton';
 export default async function DashboardPage() {
   const supabase = await createClient();
@@ -111,9 +113,18 @@ export default async function DashboardPage() {
             <CardTitle className="text-white">Acciones Rápidas</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-gray-400">
-              🚧 Próximamente: Sube tu primer documento, genera flashcards y comienza a estudiar
-            </p>
+            <div className="flex flex-col gap-3">
+              <Link href="/dashboard/subjects">
+                <Button className="w-full bg-purple-600 hover:bg-purple-700 justify-start">
+                  <BookOpen className="mr-2 h-4 w-4" />
+                  Ver Materias
+                </Button>
+              </Link>
+              <Button variant="outline" className="w-full justify-start border-gray-600 text-gray-300" disabled>
+                <FileText className="mr-2 h-4 w-4" />
+                Subir Documento (Próximamente)
+              </Button>
+            </div>
           </CardContent>
         </Card>
 
