@@ -9,12 +9,13 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'No file provided' }, { status: 400 });
     }
 
-    // Importar pdf-parse dinámicamente
-    const pdfParse = (await import('pdf-parse')).default;
-
     // Convertir File a Buffer
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
+
+    // Usar require para pdf-parse (más compatible)
+    // @ts-ignore
+    const pdfParse = require('pdf-parse');
 
     // Extraer texto con pdf-parse
     const data = await pdfParse(buffer);
