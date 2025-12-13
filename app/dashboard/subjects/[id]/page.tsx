@@ -2,7 +2,7 @@ import { createClient } from '@/lib/supabase-server';
 import { redirect, notFound } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Pencil, Trash2, BookOpen, FileText, Upload, Clock } from 'lucide-react';
+import { ArrowLeft, Pencil, BookOpen, FileText, Upload, Clock } from 'lucide-react';
 import Link from 'next/link';
 import DeleteSubjectButton from '@/components/DeleteSubjectButton';
 
@@ -35,10 +35,10 @@ export default async function SubjectDetailPage({
     notFound();
   }
 
-  // Obtener documentos de esta materia
+  // Obtener documentos de esta materia - solo campos necesarios
   const { data: documents } = await supabase
     .from('documents')
-    .select('*')
+    .select('id, title, file_size, page_count, created_at')
     .eq('subject_id', id)
     .order('created_at', { ascending: false });
 
@@ -99,7 +99,7 @@ export default async function SubjectDetailPage({
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-white">{documentCount}</div>
-              <p className="text-xs text-gray-500 mt-1">PDFs subidos</p>
+              <p className="text-xs text-gray-500 mt-1">PDFs e imágenes</p>
             </CardContent>
           </Card>
 
