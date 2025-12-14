@@ -114,18 +114,27 @@ export async function extractTextFromPDF(
 }
 
 /**
- * Extrae texto de una imagen
- * OCR temporalmente deshabilitado
+ * Extrae texto de una imagen usando Gemini Vision
  */
 export async function extractTextFromImage(buffer: Buffer): Promise<{
   text: string;
   confidence: number;
 }> {
-  console.log('🖼️ Image upload detected');
-  console.log('⚠️ OCR temporarily disabled - storing image without text extraction');
+  console.log('🖼️ Image upload detected - using Gemini Vision');
   
-  return {
-    text: '',
-    confidence: 0,
-  };
+  try {
+    const { extractFromImage } = await import('./vision-extractor');
+    const result = await extractFromImage(buffer);
+    
+    return {
+      text: result.text,
+      confidence: result.confidence,
+    };
+  } catch (error: any) {
+    console.error('❌ Error extracting from image:', error);
+    return {
+      text: '',
+      confidence: 0,
+    };
+  }
 }

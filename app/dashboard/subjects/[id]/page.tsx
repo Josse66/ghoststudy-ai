@@ -2,7 +2,7 @@ import { createClient } from '@/lib/supabase-server';
 import { redirect, notFound } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Pencil, BookOpen, FileText, Upload, Clock } from 'lucide-react';
+import { ArrowLeft, Pencil, BookOpen, FileText, Upload, Clock, MessageSquare } from 'lucide-react';
 import Link from 'next/link';
 import DeleteSubjectButton from '@/components/DeleteSubjectButton';
 
@@ -71,7 +71,18 @@ export default async function SubjectDetailPage({
             </div>
           </div>
 
-          <div className="flex gap-3">
+          <div className="flex gap-3 flex-wrap">
+            {/* Botón de Chat con toda la materia - NUEVO */}
+            {documentCount > 0 && (
+              <Link href={`/dashboard/subjects/${subject.id}/chat`}>
+                <Button className="bg-green-600 hover:bg-green-700">
+                  <MessageSquare className="mr-2 h-4 w-4" />
+                  Chat con toda la materia
+                </Button>
+              </Link>
+            )}
+
+            {/* Botones existentes */}
             <Link href={`/dashboard/subjects/${subject.id}/upload`}>
               <Button className="bg-purple-600 hover:bg-purple-700">
                 <Upload className="mr-2 h-4 w-4" />
