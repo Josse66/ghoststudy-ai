@@ -8,10 +8,28 @@ interface VisionResult {
 }
 
 /**
- * Extrae texto y genera descripción de imágenes usando Google Gemini Vision
+ * Convierte buffer a formato que Gemini pueda procesar
  */
-export async function extractFromImage(buffer: Buffer): Promise<VisionResult> {
+function bufferToGenerativePart(buffer: Buffer, mimeType: string) {
+  return {
+    inlineData: {
+      data: buffer.toString('base64'),
+      mimeType
+    }
+  };
+}
+
+/**
+ * Extrae texto de imágenes o PDFs usando Google Gemini
+ * Soporta: JPG, PNG, WebP, PDF
+ */
+export async function extractFromImage(
+  buffer: Buffer, 
+  mimeType: string = 'image/jpeg'
+): Promise<VisionResult> {
   console.log('🖼️ Starting Gemini Vision extraction...');
+  console.log('📋 MIME Type:', mimeType);
+  console.log('📏 Buffer size:', buffer.length, 'bytes');
 
   try {
     const apiKey = process.env.GEMINI_API_KEY;
@@ -20,110 +38,121 @@ export async function extractFromImage(buffer: Buffer): Promise<VisionResult> {
       throw new Error('GEMINI_API_KEY not found in environment variables');
     }
 
+    console.log('🔑 API key found, length:', apiKey.length);
+
     const genAI = new GoogleGenerativeAI(apiKey);
-    // Intentar usar Gemini 2.5 Flash (más reciente)
-    const model = genAI.getGenerativeModel({ 
-      model: 'gemini-2.5-flash'
+    
+    // Usar modelo correcto según el tipo de archivo
+    const modelName = mimeType === 'application/pdf' 
+  ? 'gemini-2.5-flash'  // ✅ Este sí existe
+  : 'gemini-2.0-flash-exp';  // ✅ Este también
+    
+    console.log('🤖 Using model:', modelName);
+
+    const model = genAI.getGenerativeModel({ model: modelName });
+
+    const prompt = `Eres un experto en extraer texto de documentos. Analiza este ${mimeType === 'application/pdf' ? 'PDF' : 'imagen'} y extrae TODO el texto que contenga.
+
+INSTRUCCIONES IMPORTANTES:
+- Transcribe TODO el texto exactamente como aparece, sin omitir nada
+- Si es texto manuscrito, haz tu mejor esfuerzo para leerlo
+- Mantén la estructura y formato (párrafos, listas, etc.)
+- Si hay tablas, organízalas claramente
+- Si hay ecuaciones matemáticas, transcríbelas de forma legible
+- Si hay diagramas con texto, extrae el texto de las etiquetas
+- Respeta saltos de línea y espaciado
+- NO inventes contenido que no esté en el documento
+
+Formato de respuesta en español:
+
+TEXTO EXTRAÍDO:
+[Aquí todo el texto extraído del documento]
+
+DESCRIPCIÓN:
+[Breve descripción de 1-2 líneas: tipo de documento, tema principal, formato]
+
+CONCEPTOS CLAVE:
+[Lista de 3-5 conceptos principales del documento]`;
+
+    console.log('📤 Sending request to Gemini API...');
+
+    const imagePart = bufferToGenerativePart(buffer, mimeType);
+    
+    const generationConfig = {
+      temperature: 0.2,
+      topK: 40,
+      topP: 0.95,
+      maxOutputTokens: 8192,
+    };
+
+    const result = await model.generateContent({
+      contents: [{ role: 'user', parts: [{ text: prompt }, imagePart] }],
+      generationConfig,
     });
 
-    console.log('📸 Converting image to base64...');
-    const base64Image = buffer.toString('base64');
+    const response = await result.response;
+    const text = response.text();
 
-    console.log('🤖 Calling Gemini Vision API...');
+    console.log('✅ Gemini response received, length:', text.length);
 
-    const prompt = `Analiza esta imagen de forma educativa y detallada. Por favor:
+    // Extraer las secciones de la respuesta
+    const textMatch = text.match(/TEXTO EXTRAÍDO:\s*([\s\S]*?)\s*(?:DESCRIPCIÓN:|$)/i);
+    const descMatch = text.match(/DESCRIPCIÓN:\s*([\s\S]*?)\s*(?:CONCEPTOS CLAVE:|$)/i);
+    const conceptsMatch = text.match(/CONCEPTOS CLAVE:\s*([\s\S]*?)$/i);
 
-1. EXTRAE TODO EL TEXTO visible en la imagen (incluyendo texto escrito a mano, impreso, fórmulas, etc.)
-2. DESCRIBE el contenido visual (diagramas, gráficos, ilustraciones, etc.)
-3. IDENTIFICA conceptos clave y temas principales
-4. Si hay fórmulas matemáticas o ecuaciones, transcríbelas correctamente
+    let extractedText = textMatch ? textMatch[1].trim() : text;
+    let description = descMatch ? descMatch[1].trim() : 'Documento procesado con OCR';
+    const concepts = conceptsMatch ? conceptsMatch[1].trim() : '';
 
-Formato de respuesta:
-[TEXTO EXTRAÍDO]
-(Aquí va todo el texto que encuentres)
-
-[DESCRIPCIÓN VISUAL]
-(Aquí describe el contenido visual)
-
-[CONCEPTOS CLAVE]
-(Lista los conceptos principales)`;
-
-    const result = await model.generateContent([
-      prompt,
-      {
-        inlineData: {
-          data: base64Image,
-          mimeType: 'image/jpeg', // Gemini acepta jpeg, png, webp
-        },
-      },
-    ]);
-
-    const response = result.response;
-    const fullText = response.text();
-
-    console.log('✅ Gemini Vision extraction complete');
-    console.log('Response length:', fullText.length, 'chars');
-
-    // Parsear la respuesta estructurada
-    const textMatch = fullText.match(/\[TEXTO EXTRAÍDO\]([\s\S]*?)\[DESCRIPCIÓN VISUAL\]/);
-    const descriptionMatch = fullText.match(/\[DESCRIPCIÓN VISUAL\]([\s\S]*?)\[CONCEPTOS CLAVE\]/);
-    const conceptsMatch = fullText.match(/\[CONCEPTOS CLAVE\]([\s\S]*?)$/);
-
-    const extractedText = textMatch ? textMatch[1].trim() : '';
-    const visualDescription = descriptionMatch ? descriptionMatch[1].trim() : '';
-    const keyConcepts = conceptsMatch ? conceptsMatch[1].trim() : '';
-
-    // Combinar todo en un texto estructurado
-    let combinedText = '';
-    
-    if (extractedText) {
-      combinedText += `=== TEXTO EXTRAÍDO ===\n${extractedText}\n\n`;
-    }
-    
-    if (visualDescription) {
-      combinedText += `=== DESCRIPCIÓN VISUAL ===\n${visualDescription}\n\n`;
-    }
-    
-    if (keyConcepts) {
-      combinedText += `=== CONCEPTOS CLAVE ===\n${keyConcepts}`;
+    if (!textMatch && text.length > 0) {
+      console.log('⚠️ No structured sections found, using full response as text');
+      extractedText = text;
     }
 
-    // Si no se pudo parsear, usar la respuesta completa
-    const finalText = combinedText.trim() || fullText;
+    if (concepts) {
+      description += '\n\nConceptos: ' + concepts;
+    }
 
-    // Calcular confianza basada en la cantidad de contenido extraído
-    const confidence = Math.min(95, 60 + (finalText.length / 10));
+    let confidence = 70;
+    if (extractedText.length > 100) confidence += 10;
+    if (extractedText.length > 500) confidence += 10;
+    if (concepts) confidence += 5;
+    if (extractedText.includes('\n')) confidence += 5;
+    confidence = Math.min(95, confidence);
 
-    console.log(`📊 Confidence: ${confidence.toFixed(1)}%`);
+    console.log('✅ Gemini Vision extraction complete:', {
+      textLength: extractedText.length,
+      descriptionLength: description.length,
+      confidence: confidence.toFixed(2) + '%',
+      model: modelName
+    });
 
     return {
-      text: finalText,
-      description: visualDescription || 'Imagen procesada con IA',
-      confidence: Number(confidence.toFixed(1)),
+      text: extractedText,
+      description,
+      confidence
     };
   } catch (error: any) {
     console.error('❌ Error in Gemini Vision extraction:', error);
-    
-    // Si falla, devolver información básica
-    return {
-      text: '',
-      description: 'Error al procesar imagen con IA',
-      confidence: 0,
-    };
+    throw error;
   }
 }
 
 /**
- * Detecta el tipo MIME de la imagen basado en los primeros bytes
+ * Extrae texto de una imagen JPG/PNG/WebP
  */
-function detectImageMimeType(buffer: Buffer): string {
-  const header = buffer.slice(0, 4).toString('hex');
-  
-  if (header.startsWith('ffd8ff')) return 'image/jpeg';
-  if (header.startsWith('89504e47')) return 'image/png';
-  if (header.startsWith('47494638')) return 'image/gif';
-  if (header.startsWith('52494646')) return 'image/webp';
-  
-  // Default
-  return 'image/jpeg';
+export async function extractTextFromImageFile(
+  buffer: Buffer, 
+  mimeType: string = 'image/jpeg'
+): Promise<VisionResult> {
+  console.log('📸 Processing image file with Gemini Vision');
+  return extractFromImage(buffer, mimeType);
+}
+
+/**
+ * Extrae texto de un PDF (especialmente PDFs escaneados)
+ */
+export async function extractTextFromPDF(buffer: Buffer): Promise<VisionResult> {
+  console.log('📄 Processing PDF with Gemini Vision OCR');
+  return extractFromImage(buffer, 'application/pdf');
 }
