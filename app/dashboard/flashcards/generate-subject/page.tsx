@@ -6,7 +6,7 @@ import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
-import { ArrowLeft, Loader2, Sparkles, CheckCircle2, AlertCircle, FileText } from 'lucide-react';
+import { ArrowLeft, Loader2, Sparkles, CheckCircle2, AlertCircle, FileText, BookOpen } from 'lucide-react';
 import Link from 'next/link';
 
 interface Document {
@@ -212,9 +212,17 @@ function GenerateSubjectFlashcardsContent() {
           Generar Flashcards de la Materia
         </h1>
         {subject && (
-          <p className="text-gray-400 mb-8">
-            Materia: <span className="text-white font-semibold">{subject.name}</span>
-          </p>
+          <div className="flex items-center justify-between mb-8">
+            <p className="text-gray-400">
+              Materia: <span className="text-white font-semibold">{subject.name}</span>
+            </p>
+            <Link href={`/dashboard/subjects/${subjectId}/flashcards`}>
+              <Button variant="outline" className="border-purple-600 text-purple-400 hover:bg-purple-600/10">
+                <BookOpen className="mr-2 h-4 w-4" />
+                Ver Flashcards Existentes
+              </Button>
+            </Link>
+          </div>
         )}
 
         {/* Document Selection */}
