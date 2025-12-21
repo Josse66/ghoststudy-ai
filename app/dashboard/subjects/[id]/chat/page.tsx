@@ -31,7 +31,7 @@ interface Document {
 export default function SubjectChatPage() {
   const params = useParams();
   const router = useRouter();
-  const subjectId = params.id as string; // Usar 'id' en lugar de 'subjectId'
+  const subjectId = params.id as string;
 
   const [subject, setSubject] = useState<Subject | null>(null);
   const [documents, setDocuments] = useState<Document[]>([]);
@@ -41,14 +41,12 @@ export default function SubjectChatPage() {
   const [loadingMessages, setLoadingMessages] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // Cargar materia, documentos y mensajes
   useEffect(() => {
     loadSubject();
     loadDocuments();
     loadMessages();
   }, [subjectId]);
 
-  // Auto-scroll al último mensaje
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
@@ -78,7 +76,7 @@ export default function SubjectChatPage() {
     const { data } = await supabase
       .from('chat_messages')
       .select('*')
-      .eq('document_id', subjectId) // Usa subjectId como referencia
+      .eq('document_id', subjectId)
       .order('created_at', { ascending: true });
 
     if (data) setMessages(data);
@@ -105,7 +103,7 @@ export default function SubjectChatPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          subjectId, // Usar subjectId en lugar de documentId
+          subjectId,
           message: textToSend,
           action: action || 'chat',
         }),
@@ -139,6 +137,11 @@ export default function SubjectChatPage() {
     }
   };
 
+  // 🎯 NUEVO: Función para redirigir al generador de flashcards
+  const handleFlashcardsClick = () => {
+    router.push(`/dashboard/flashcards/generate-subject?subjectId=${subjectId}`);
+  };
+
   const quickActions = [
     {
       icon: FileText,
@@ -146,13 +149,15 @@ export default function SubjectChatPage() {
       action: 'summary',
       message: 'Resume todos los documentos',
       color: 'bg-blue-600 hover:bg-blue-700',
+      onClick: null, // Usa el chat normal
     },
     {
       icon: ListChecks,
       label: 'Flashcards',
       action: 'flashcards',
-      message: 'Genera flashcards de todo',
+      message: null, // No envía mensaje
       color: 'bg-purple-600 hover:bg-purple-700',
+      onClick: handleFlashcardsClick, // 🎯 Redirige al generador
     },
     {
       icon: HelpCircle,
@@ -160,6 +165,7 @@ export default function SubjectChatPage() {
       action: 'quiz',
       message: 'Crea un examen con todo',
       color: 'bg-green-600 hover:bg-green-700',
+      onClick: null,
     },
     {
       icon: Sparkles,
@@ -167,6 +173,7 @@ export default function SubjectChatPage() {
       action: 'explain',
       message: 'Cuáles son los conceptos más importantes',
       color: 'bg-orange-600 hover:bg-orange-700',
+      onClick: null,
     },
   ];
 
@@ -218,7 +225,6 @@ export default function SubjectChatPage() {
                 Usa los botones de "Chat Rápido" en la parte inferior ⬇️
               </p>
 
-              {/* Lista de documentos incluidos */}
               {documents.length > 0 && (
                 <div className="max-w-md mx-auto mt-6">
                   <p className="text-xs text-gray-500 mb-2">📚 Documentos incluidos:</p>
@@ -287,7 +293,15 @@ export default function SubjectChatPage() {
                 return (
                   <Button
                     key={action.action}
-                    onClick={() => sendMessage(action.message, action.action)}
+                    onClick={() => {
+                      // 🎯 Si tiene función onClick personalizada, úsala
+                      if (action.onClick) {
+                        action.onClick();
+                      } else if (action.message) {
+                        // Si no, envía el mensaje al chat
+                        sendMessage(action.message, action.action);
+                      }
+                    }}
                     disabled={loading}
                     size="sm"
                     className={`${action.color} text-white flex items-center gap-2 text-xs py-2`}
