@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
@@ -10,6 +10,18 @@ import { ArrowLeft, Loader2, Sparkles, CheckCircle2, AlertCircle } from 'lucide-
 import Link from 'next/link';
 
 export default function GenerateFlashcardsPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-gray-900 text-white p-8 flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-purple-400" />
+      </div>
+    }>
+      <GenerateFlashcardsContent />
+    </Suspense>
+  );
+}
+
+function GenerateFlashcardsContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const documentId = searchParams.get('documentId');

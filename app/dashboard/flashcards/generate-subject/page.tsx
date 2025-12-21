@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
@@ -15,7 +15,7 @@ interface Document {
   content: string;
 }
 
-export default function GenerateSubjectFlashcardsPage() {
+function GenerateSubjectFlashcardsContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const subjectId = searchParams.get('subjectId');
@@ -416,5 +416,17 @@ export default function GenerateSubjectFlashcardsPage() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function GenerateSubjectFlashcardsPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-gray-900 text-white p-8 flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-purple-400" />
+      </div>
+    }>
+      <GenerateSubjectFlashcardsContent />
+    </Suspense>
   );
 }
