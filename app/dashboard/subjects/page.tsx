@@ -2,7 +2,7 @@ import { createClient } from '@/lib/supabase-server';
 import { redirect } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Plus, BookOpen } from 'lucide-react';
+import { Plus, BookOpen, ArrowLeft } from 'lucide-react';
 import Link from 'next/link';
 
 export default async function SubjectsPage() {
@@ -24,7 +24,7 @@ export default async function SubjectsPage() {
     .order('created_at', { ascending: false });
 
   return (
-    <div className="min-h-screen bg-gray-900 text-white p-8">
+<div className="min-h-screen bg-gray-900 text-white p-8">
       <div className="max-w-7xl mx-auto">
         {/* Header */}
         <div className="flex items-center justify-between mb-8">
@@ -34,14 +34,21 @@ export default async function SubjectsPage() {
               Organiza tus estudios por materia
             </p>
           </div>
-          <Link href="/dashboard/subjects/new">
-            <Button className="bg-purple-600 hover:bg-purple-700">
-              <Plus className="mr-2 h-4 w-4" />
-              Nueva Materia
-            </Button>
-          </Link>
+          <div className="flex items-center gap-3">
+            <Link href="/dashboard">
+              <Button variant="outline" className="bg-purple-600 hover:bg-purple-700">
+                <ArrowLeft className="mr-2 h-4 w-4" />
+                Volver al Dashboard
+              </Button>
+            </Link>
+            <Link href="/dashboard/subjects/new">
+              <Button className="bg-purple-600 hover:bg-purple-700">
+                <Plus className="mr-2 h-4 w-4" />
+                Nueva Materia
+              </Button>
+            </Link>
+          </div>
         </div>
-
         {/* Lista de Materias */}
         {subjects && subjects.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">

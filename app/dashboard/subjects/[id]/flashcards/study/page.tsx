@@ -334,8 +334,7 @@ export default function StudyModePage() {
             </p>
           )}
         </div>
-
-        {/* Flashcard */}
+{/* Flashcard */}
         <div className="mb-8">
           <div
             onClick={() => setIsFlipped(!isFlipped)}
@@ -348,13 +347,12 @@ export default function StudyModePage() {
                 {!isFlipped && (
                   <div className="text-center">
                     <p className="text-xs text-purple-400 mb-4 uppercase font-semibold">Pregunta</p>
-                    <p className="text-2xl md:text-3xl font-bold leading-relaxed">
+                    <p className="text-2xl md:text-3xl font-bold leading-relaxed text-blue-200">
                       {currentCard.front}
                     </p>
                     <p className="text-sm text-gray-500 mt-8">Toca para ver la respuesta</p>
                   </div>
                 )}
-
                 {/* Back */}
                 {isFlipped && (
                   <div className="text-center">
