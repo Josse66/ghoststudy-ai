@@ -25,30 +25,35 @@ export default async function SubjectsPage() {
 
   return (
 <div className="min-h-screen bg-gray-900 text-white p-8">
-      <div className="max-w-7xl mx-auto">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-8">
-          <div>
-            <h1 className="text-3xl font-bold mb-2">Mis Materias</h1>
-            <p className="text-gray-400">
-              Organiza tus estudios por materia
-            </p>
-          </div>
-          <div className="flex items-center gap-3">
-            <Link href="/dashboard">
-              <Button variant="outline" className="bg-purple-600 hover:bg-purple-700">
-                <ArrowLeft className="mr-2 h-4 w-4" />
-                Volver al Dashboard
-              </Button>
-            </Link>
-            <Link href="/dashboard/subjects/new">
-              <Button className="bg-purple-600 hover:bg-purple-700">
-                <Plus className="mr-2 h-4 w-4" />
-                Nueva Materia
-              </Button>
-            </Link>
-          </div>
-        </div>
+  <div className="max-w-7xl mx-auto">
+    {/* Header */}
+    <div className="mb-8">
+      <div className="mb-4">
+        <h1 className="text-3xl font-bold mb-2">Mis Materias</h1>
+        <p className="text-gray-400">
+          Organiza tus estudios por materia
+        </p>
+      </div>
+      
+      {/* Botones - Stack en móvil, lado a lado en desktop */}
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+        <Link href="/dashboard" className="w-full sm:w-auto">
+          <Button 
+            variant="outline" 
+            className="w-full border-gray-600 text-gray-300 hover:bg-gray-800"
+          >
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            Volver al Dashboard
+          </Button>
+        </Link>
+        <Link href="/dashboard/subjects/new" className="w-full sm:w-auto">
+          <Button className="w-full bg-purple-600 hover:bg-purple-700">
+            <Plus className="mr-2 h-4 w-4" />
+            Nueva Materia
+          </Button>
+        </Link>
+      </div>
+    </div>
         {/* Lista de Materias */}
         {subjects && subjects.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
