@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -33,12 +33,30 @@ interface SearchResult {
   highlight: string;
 }
 
+// Debounce hook
+function useDebounce<T>(value: T, delay: number): T {
+  const [debouncedValue, setDebouncedValue] = useState<T>(value);
+
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedValue(value);
+    }, delay);
+
+    return () => {
+      clearTimeout(handler);
+    };
+  }, [value, delay]);
+
+  return debouncedValue;
+}
+
 export default function SearchPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const initialQuery = searchParams.get('q') || '';
 
   const [searchQuery, setSearchQuery] = useState(initialQuery);
+  const debouncedQuery = useDebounce(searchQuery, 300); // 300ms delay
   const [results, setResults] = useState<SearchResult[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [activeFilter, setActiveFilter] = useState<'all' | 'document' | 'flashcard' | 'subject'>('all');
@@ -47,19 +65,19 @@ export default function SearchPageContent() {
   const [selectedDifficulty, setSelectedDifficulty] = useState<string>('all');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
 
-  // Cargar materias para filtros
+  // Cargar materias para filtros (solo una vez)
   useEffect(() => {
     loadSubjects();
   }, []);
 
-  // Ejecutar búsqueda cuando cambia el query
+  // Ejecutar búsqueda con debounce
   useEffect(() => {
-    if (searchQuery.length >= 2) {
-      performSearch();
+    if (debouncedQuery.length >= 2) {
+      performSearch(debouncedQuery);
     } else {
       setResults([]);
     }
-  }, [searchQuery, activeFilter, selectedSubject, selectedDifficulty, selectedCategory]);
+  }, [debouncedQuery, activeFilter, selectedSubject, selectedDifficulty, selectedCategory]);
 
   const loadSubjects = async () => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -67,14 +85,15 @@ export default function SearchPageContent() {
 
     const { data } = await supabase
       .from('subjects')
-      .select('*')
+      .select('id, name, icon')
       .eq('user_id', user.id)
-      .order('name');
+      .order('name')
+      .limit(50); // Límite razonable
 
     if (data) setSubjects(data);
   };
 
-  const performSearch = async () => {
+  const performSearch = useCallback(async (query: string) => {
     setIsLoading(true);
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
@@ -83,135 +102,127 @@ export default function SearchPageContent() {
     }
 
     const allResults: SearchResult[] = [];
+    const RESULT_LIMIT = 20; // Límite global de resultados
 
     try {
-      // Buscar en materias
+      // Query paralela - ejecutar todas al mismo tiempo
+      const searchPromises = [];
+
+      // Buscar en materias (si aplica)
       if (activeFilter === 'all' || activeFilter === 'subject') {
-        const { data: subjectsData } = await supabase
-          .from('subjects')
-          .select('*')
-          .eq('user_id', user.id)
-          .ilike('name', `%${searchQuery}%`);
-
-        if (subjectsData) {
-          subjectsData.forEach((subject) => {
-            allResults.push({
-              id: subject.id,
-              type: 'subject',
-              title: subject.name,
-              content: subject.description || '',
-              subjectName: subject.name,
-              subjectIcon: subject.icon,
-              url: `/dashboard/subjects/${subject.id}`,
-              highlight: highlightText(subject.name, searchQuery)
-            });
-          });
-        }
+        searchPromises.push(
+          supabase
+            .from('subjects')
+            .select('id, name, icon, description')
+            .eq('user_id', user.id)
+            .ilike('name', `%${query}%`)
+            .limit(10)
+            .then(({ data }) => {
+              if (data) {
+                return data.map((subject) => ({
+                  id: subject.id,
+                  type: 'subject' as const,
+                  title: subject.name,
+                  content: subject.description || '',
+                  subjectName: subject.name,
+                  subjectIcon: subject.icon,
+                  url: `/dashboard/subjects/${subject.id}`,
+                  highlight: highlightText(subject.name, query)
+                }));
+              }
+              return [];
+            })
+        );
       }
 
-      // Buscar en documentos
+      // Buscar en documentos (si aplica)
       if (activeFilter === 'all' || activeFilter === 'document') {
-        let documentsQuery = supabase
+        let docQuery = supabase
           .from('documents')
-          .select(`
-            *,
-            subjects (name, icon)
-          `)
-          .eq('user_id', user.id);
+          .select('id, name, content, subject_id, subjects!inner(name, icon)')
+          .eq('user_id', user.id)
+          .or(`name.ilike.%${query}%,content.ilike.%${query}%`)
+          .limit(10);
 
         if (selectedSubject !== 'all') {
-          documentsQuery = documentsQuery.eq('subject_id', selectedSubject);
+          docQuery = docQuery.eq('subject_id', selectedSubject);
         }
 
-        const { data: documentsData } = await documentsQuery;
-
-        if (documentsData) {
-          const filtered = documentsData.filter((doc) =>
-            (doc.name && doc.name.toLowerCase().includes(searchQuery.toLowerCase())) ||
-            (doc.content && doc.content.toLowerCase().includes(searchQuery.toLowerCase()))
-          );
-
-          filtered.forEach((doc) => {
-            const contentSnippet = getContentSnippet(doc.content || '', searchQuery);
-            allResults.push({
-              id: doc.id,
-              type: 'document',
-              title: doc.name,
-              subtitle: doc.subjects?.name || '',
-              content: contentSnippet,
-              subjectName: doc.subjects?.name || '',
-              subjectIcon: doc.subjects?.icon || '📄',
-              url: `/dashboard/subjects/${doc.subject_id}/documents/${doc.id}`,
-              highlight: highlightText(doc.name, searchQuery)
-            });
-          });
-        }
+        searchPromises.push(
+          docQuery.then(({ data }) => {
+            if (data) {
+              return data.map((doc: any) => ({
+                id: doc.id,
+                type: 'document' as const,
+                title: doc.name || 'Sin título',
+                subtitle: doc.subjects?.name || '',
+                content: getContentSnippet(doc.content || '', query),
+                subjectName: doc.subjects?.name || '',
+                subjectIcon: doc.subjects?.icon || '📄',
+                url: `/dashboard/subjects/${doc.subject_id}/documents/${doc.id}`,
+                highlight: highlightText(doc.name || 'Sin título', query)
+              }));
+            }
+            return [];
+          })
+        );
       }
 
-      // Buscar en flashcards
+      // Buscar en flashcards (si aplica)
       if (activeFilter === 'all' || activeFilter === 'flashcard') {
-        let flashcardsQuery = supabase
+        let fcQuery = supabase
           .from('flashcards')
-          .select(`
-            *,
-            documents (
-              name,
-              subject_id,
-              subjects (name, icon)
-            )
-          `)
-          .eq('user_id', user.id);
-
-        if (selectedSubject !== 'all') {
-          flashcardsQuery = flashcardsQuery.eq('documents.subject_id', selectedSubject);
-        }
+          .select('id, front, back, difficulty, category, document_id, documents!inner(name, subject_id, subjects(name, icon))')
+          .eq('user_id', user.id)
+          .or(`front.ilike.%${query}%,back.ilike.%${query}%`)
+          .limit(10);
 
         if (selectedDifficulty !== 'all') {
-          flashcardsQuery = flashcardsQuery.eq('difficulty', selectedDifficulty);
+          fcQuery = fcQuery.eq('difficulty', selectedDifficulty);
         }
 
         if (selectedCategory !== 'all') {
-          flashcardsQuery = flashcardsQuery.eq('category', selectedCategory);
+          fcQuery = fcQuery.eq('category', selectedCategory);
         }
 
-        const { data: flashcardsData } = await flashcardsQuery;
-
-        if (flashcardsData) {
-          const filtered = flashcardsData.filter((fc) =>
-            (fc.front && fc.front.toLowerCase().includes(searchQuery.toLowerCase())) ||
-            (fc.back && fc.back.toLowerCase().includes(searchQuery.toLowerCase()))
-          );
-
-          filtered.forEach((fc) => {
-            const subjectName = fc.documents?.subjects?.name || '';
-            const subjectIcon = fc.documents?.subjects?.icon || '🎴';
-            allResults.push({
-              id: fc.id,
-              type: 'flashcard',
-              title: fc.front,
-              subtitle: fc.documents?.name || '',
-              content: fc.back,
-              subjectName,
-              subjectIcon,
-              difficulty: fc.difficulty,
-              category: fc.category,
-              url: `/dashboard/subjects/${fc.documents?.subject_id}/documents/${fc.document_id}`,
-              highlight: highlightText(fc.front, searchQuery)
-            });
-          });
-        }
+        searchPromises.push(
+          fcQuery.then(({ data }) => {
+            if (data) {
+              return data.map((fc: any) => ({
+                id: fc.id,
+                type: 'flashcard' as const,
+                title: fc.front || 'Sin pregunta',
+                subtitle: fc.documents?.name || '',
+                content: fc.back || '',
+                subjectName: fc.documents?.subjects?.name || '',
+                subjectIcon: fc.documents?.subjects?.icon || '🎴',
+                difficulty: fc.difficulty,
+                category: fc.category,
+                url: `/dashboard/subjects/${fc.documents?.subject_id}/documents/${fc.document_id}`,
+                highlight: highlightText(fc.front || 'Sin pregunta', query)
+              }));
+            }
+            return [];
+          })
+        );
       }
 
-      setResults(allResults);
+      // Esperar todas las búsquedas en paralelo
+      const resultsArrays = await Promise.all(searchPromises);
+      const combinedResults = resultsArrays.flat();
+
+      // Limitar resultados totales
+      setResults(combinedResults.slice(0, RESULT_LIMIT));
     } catch (error) {
       console.error('Error searching:', error);
+      setResults([]);
     }
 
     setIsLoading(false);
-  };
+  }, [activeFilter, selectedSubject, selectedDifficulty, selectedCategory]);
 
   const highlightText = (text: string, query: string): string => {
-    if (!query) return text;
+    if (!query || !text) return text;
     const regex = new RegExp(`(${query})`, 'gi');
     return text.replace(regex, '<mark class="bg-yellow-400 text-gray-900 px-1 rounded">$1</mark>');
   };
@@ -254,7 +265,6 @@ export default function SearchPageContent() {
     return colors[category] || 'bg-gray-500/20 text-gray-400';
   };
 
-  const filteredResults = results;
   const documentCount = results.filter(r => r.type === 'document').length;
   const flashcardCount = results.filter(r => r.type === 'flashcard').length;
   const subjectCount = results.filter(r => r.type === 'subject').length;
@@ -295,6 +305,7 @@ export default function SearchPageContent() {
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-12 pr-10 h-14 text-lg bg-gray-700 border-gray-600 text-white placeholder-gray-400"
+                autoFocus
               />
               {searchQuery && (
                 <button
@@ -305,6 +316,13 @@ export default function SearchPageContent() {
                 </button>
               )}
             </div>
+            {/* Indicador de búsqueda activa */}
+            {isLoading && (
+              <div className="mt-2 flex items-center gap-2 text-xs text-gray-400">
+                <div className="w-3 h-3 border-2 border-purple-500 border-t-transparent rounded-full animate-spin"></div>
+                Buscando...
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -316,6 +334,7 @@ export default function SearchPageContent() {
               variant={activeFilter === 'all' ? 'default' : 'outline'}
               onClick={() => setActiveFilter('all')}
               className={activeFilter === 'all' ? 'bg-purple-600 hover:bg-purple-700' : 'border-gray-600'}
+              size="sm"
             >
               Todos ({results.length})
             </Button>
@@ -323,6 +342,7 @@ export default function SearchPageContent() {
               variant={activeFilter === 'subject' ? 'default' : 'outline'}
               onClick={() => setActiveFilter('subject')}
               className={activeFilter === 'subject' ? 'bg-purple-600 hover:bg-purple-700' : 'border-gray-600'}
+              size="sm"
             >
               <BookOpen className="h-4 w-4 mr-2" />
               Materias ({subjectCount})
@@ -331,6 +351,7 @@ export default function SearchPageContent() {
               variant={activeFilter === 'document' ? 'default' : 'outline'}
               onClick={() => setActiveFilter('document')}
               className={activeFilter === 'document' ? 'bg-purple-600 hover:bg-purple-700' : 'border-gray-600'}
+              size="sm"
             >
               <FileText className="h-4 w-4 mr-2" />
               Documentos ({documentCount})
@@ -339,99 +360,102 @@ export default function SearchPageContent() {
               variant={activeFilter === 'flashcard' ? 'default' : 'outline'}
               onClick={() => setActiveFilter('flashcard')}
               className={activeFilter === 'flashcard' ? 'bg-purple-600 hover:bg-purple-700' : 'border-gray-600'}
+              size="sm"
             >
               <CreditCard className="h-4 w-4 mr-2" />
               Flashcards ({flashcardCount})
             </Button>
           </div>
 
-          {/* Filtros avanzados */}
-          <Card className="bg-gray-800 border-gray-700">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-sm">
-                <Filter className="h-4 w-4" />
-                Filtros Avanzados
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                {/* Filtro por materia */}
-                <div>
-                  <label className="text-sm text-gray-400 mb-2 block">Materia</label>
-                  <select
-                    value={selectedSubject}
-                    onChange={(e) => setSelectedSubject(e.target.value)}
-                    className="w-full bg-gray-700 border-gray-600 rounded-md p-2 text-white"
-                  >
-                    <option value="all">Todas las materias</option>
-                    {subjects.map((subject) => (
-                      <option key={subject.id} value={subject.id}>
-                        {subject.icon} {subject.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+          {/* Filtros avanzados (colapsable) */}
+          {(activeFilter === 'all' || activeFilter === 'flashcard') && (
+            <Card className="bg-gray-800 border-gray-700">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-sm">
+                  <Filter className="h-4 w-4" />
+                  Filtros Avanzados
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {/* Filtro por materia */}
+                  <div>
+                    <label className="text-sm text-gray-400 mb-2 block">Materia</label>
+                    <select
+                      value={selectedSubject}
+                      onChange={(e) => setSelectedSubject(e.target.value)}
+                      className="w-full bg-gray-700 border-gray-600 rounded-md p-2 text-white text-sm"
+                    >
+                      <option value="all">Todas las materias</option>
+                      {subjects.map((subject) => (
+                        <option key={subject.id} value={subject.id}>
+                          {subject.icon} {subject.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
 
-                {/* Filtro por dificultad */}
-                <div>
-                  <label className="text-sm text-gray-400 mb-2 block">Dificultad</label>
-                  <select
-                    value={selectedDifficulty}
-                    onChange={(e) => setSelectedDifficulty(e.target.value)}
-                    className="w-full bg-gray-700 border-gray-600 rounded-md p-2 text-white"
-                    disabled={activeFilter === 'subject' || activeFilter === 'document'}
-                  >
-                    <option value="all">Todas</option>
-                    <option value="easy">Fácil</option>
-                    <option value="medium">Media</option>
-                    <option value="hard">Difícil</option>
-                  </select>
-                </div>
+                  {/* Filtro por dificultad */}
+                  <div>
+                    <label className="text-sm text-gray-400 mb-2 block">Dificultad</label>
+                    <select
+                      value={selectedDifficulty}
+                      onChange={(e) => setSelectedDifficulty(e.target.value)}
+                      className="w-full bg-gray-700 border-gray-600 rounded-md p-2 text-white text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                      disabled={activeFilter !== 'all' && activeFilter !== 'flashcard'}
+                    >
+                      <option value="all">Todas</option>
+                      <option value="easy">Fácil</option>
+                      <option value="medium">Media</option>
+                      <option value="hard">Difícil</option>
+                    </select>
+                  </div>
 
-                {/* Filtro por categoría */}
-                <div>
-                  <label className="text-sm text-gray-400 mb-2 block">Categoría</label>
-                  <select
-                    value={selectedCategory}
-                    onChange={(e) => setSelectedCategory(e.target.value)}
-                    className="w-full bg-gray-700 border-gray-600 rounded-md p-2 text-white"
-                    disabled={activeFilter === 'subject' || activeFilter === 'document'}
-                  >
-                    <option value="all">Todas</option>
-                    <option value="Concepto">Concepto</option>
-                    <option value="Definición">Definición</option>
-                    <option value="Problema">Problema</option>
-                    <option value="Fórmula">Fórmula</option>
-                    <option value="Proceso">Proceso</option>
-                    <option value="Comparación">Comparación</option>
-                  </select>
+                  {/* Filtro por categoría */}
+                  <div>
+                    <label className="text-sm text-gray-400 mb-2 block">Categoría</label>
+                    <select
+                      value={selectedCategory}
+                      onChange={(e) => setSelectedCategory(e.target.value)}
+                      className="w-full bg-gray-700 border-gray-600 rounded-md p-2 text-white text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                      disabled={activeFilter !== 'all' && activeFilter !== 'flashcard'}
+                    >
+                      <option value="all">Todas</option>
+                      <option value="Concepto">Concepto</option>
+                      <option value="Definición">Definición</option>
+                      <option value="Problema">Problema</option>
+                      <option value="Fórmula">Fórmula</option>
+                      <option value="Proceso">Proceso</option>
+                      <option value="Comparación">Comparación</option>
+                    </select>
+                  </div>
                 </div>
-              </div>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+          )}
         </div>
 
         {/* Resultados */}
-        {isLoading ? (
-          <div className="text-center py-12">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-500 mx-auto"></div>
-            <p className="text-gray-400 mt-4">Buscando...</p>
-          </div>
-        ) : searchQuery.length < 2 ? (
+        {searchQuery.length < 2 ? (
           <div className="text-center py-12">
             <Search className="h-16 w-16 text-gray-600 mx-auto mb-4" />
             <p className="text-gray-400 text-lg">Escribe al menos 2 caracteres para buscar</p>
             <p className="text-gray-500 text-sm mt-2">Busca en materias, documentos y flashcards</p>
           </div>
-        ) : filteredResults.length === 0 ? (
+        ) : isLoading && results.length === 0 ? (
+          <div className="text-center py-12">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-500 mx-auto"></div>
+            <p className="text-gray-400 mt-4">Buscando...</p>
+          </div>
+        ) : results.length === 0 ? (
           <div className="text-center py-12">
             <Search className="h-16 w-16 text-gray-600 mx-auto mb-4" />
-            <p className="text-gray-400 text-lg">No se encontraron resultados para "{searchQuery}"</p>
+            <p className="text-gray-400 text-lg">No se encontraron resultados para "{debouncedQuery}"</p>
             <p className="text-gray-500 text-sm mt-2">Intenta con otros términos de búsqueda</p>
           </div>
         ) : (
           <div className="space-y-3">
-            {filteredResults.map((result) => (
+            {results.map((result) => (
               <Link key={`${result.type}-${result.id}`} href={result.url}>
                 <Card className="bg-gray-800 border-gray-700 hover:border-purple-500 transition-all cursor-pointer group">
                   <CardContent className="p-4">
@@ -474,22 +498,22 @@ export default function SearchPageContent() {
                         {/* Contenido con highlight */}
                         <p 
                           className="text-sm text-gray-300 line-clamp-2 mb-2"
-                          dangerouslySetInnerHTML={{ __html: highlightText(result.content, searchQuery) }}
+                          dangerouslySetInnerHTML={{ __html: highlightText(result.content, debouncedQuery) }}
                         />
 
                         {/* Badges */}
                         <div className="flex flex-wrap gap-2">
-                          <Badge variant="outline" className="border-gray-600 text-gray-400">
+                          <Badge variant="outline" className="border-gray-600 text-gray-400 text-xs">
                             {result.subjectIcon} {result.subjectName}
                           </Badge>
                           {result.difficulty && (
-                            <Badge className={getDifficultyColor(result.difficulty)}>
+                            <Badge className={`${getDifficultyColor(result.difficulty)} text-xs`}>
                               {result.difficulty === 'easy' ? 'Fácil' : 
                                result.difficulty === 'medium' ? 'Media' : 'Difícil'}
                             </Badge>
                           )}
                           {result.category && (
-                            <Badge className={getCategoryColor(result.category)}>
+                            <Badge className={`${getCategoryColor(result.category)} text-xs`}>
                               {result.category}
                             </Badge>
                           )}
