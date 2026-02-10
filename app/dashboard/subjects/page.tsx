@@ -40,7 +40,7 @@ export default async function SubjectsPage() {
         <Link href="/dashboard" className="w-full sm:w-auto">
           <Button 
             variant="outline" 
-            className="w-full border-gray-600 text-gray-300 hover:bg-gray-800"
+            className="w-full bg-purple-600 hover:bg-purple-700"
           >
             <ArrowLeft className="mr-2 h-4 w-4" />
             Volver al Dashboard
